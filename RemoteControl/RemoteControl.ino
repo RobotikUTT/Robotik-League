@@ -86,7 +86,7 @@ void update_input_values(){
   turbo_btn_state = digitalRead(PIN_TURBO) == LOW;
 }
 
-// Updates the turbo state. Depends on the current state, how long the turbo has been in the state, and if the turbo butotn is being pressed.
+// Updates the turbo state. Depends on the current state, how long the turbo has been in the state, and if the turbo button is being pressed.
 void update_turbo_state(){
   switch(turbo_state){
     case idle:
