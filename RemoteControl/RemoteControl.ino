@@ -107,6 +107,7 @@ void update_turbo_state(){
       if(millis() - turbo_recharge_start > TURBO_RECHARGE_TIME){
         turbo_state = idle;
       }
+      break;
   }
 }
 
