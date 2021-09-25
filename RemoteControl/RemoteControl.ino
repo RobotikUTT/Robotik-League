@@ -2,45 +2,45 @@
 #include <nRF24L01.h>
 #include <RF24.h>
 
-enum EtatTurbo {
+enum TurboState {
   idle,
-  actif,
-  recharge
+  active,
+  recharging
 };
 
-// Definitions des pins
+// Input pin definitions
 #define PIN_JOY_X A0
 #define PIN_JOY_Y A1
 #define PIN_ACCEL A2
 #define PIN_TURBO 4 
 
-// Pins pour le nRF24L01
+// nRF24L01 pins
 #define NRF_CE  7
 #define NRF_CSN 8
 
-// Definition de valeurs
+// Fixed values
 #define DEADZONE 0.1f
-#define DUREE_TURBO 2000
-#define DUREE_RECHARGE 2000
+#define TURBO_ACTIVE_TIME 2000
+#define TURBO_RECHARGE_TIME 2000
 
-// Declaration des variables globales
+// Global variables
 float joyX = 0.0f;
 float joyY = 0.0f;
 float accl = 0.0f;
-bool btnTurbo = false;
+bool turbo_btn_state = false;
 
-uint32_t debutTurbo;
-uint32_t debutRecharge;
-EtatTurbo etatTurbo = idle;
+uint32_t turbo_active_start;
+uint32_t turbo_recharge_start;
+TurboState turbo_state = idle;
 
 
 RF24 radio(NRF_CE, NRF_CSN);
 
 const byte address[6] = "test1";
 
-// Prototypes des fonctions
+// Function prototypes
 void update_input_values();
-void update_etat_turbo();
+void update_turbo_state();
 void send_motor_and_turbo_values();
 
 void setup(){
@@ -54,25 +54,25 @@ void setup(){
 
 void loop(){
   update_input_values();
-  update_etat_turbo();
+  update_turbo_state();
   send_motor_and_turbo_values();
 }
 
-// Une version de "map()" pour floats.
+// A version of "map()" for floats.
 float mapf(float x, float in_min, float in_max, float out_min, float out_max){
   return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
 }
 
-float remapDeadzone(float value, float deadzone){
+float remap_deadzone(float value, float deadzone){
   if(value >  deadzone) return mapf(value,  deadzone, 1.0f, 0.0f, 1.0f);
   if(value < -deadzone) return mapf(value, -1.0f, -deadzone, -1.0f, 0.0f);
 
   return 0.0f;
 }
 
-// Map une valeur entre "fromLower-fromUpper" vers "toLower-toUpper", avec une deadzone entre "(-deadzone)-(+deadzone)"
-float normalizePlusDeadzone(float value, float fromLower, float fromUpper, float toLower, float toUpper, float deadzone){
-  return remapDeadzone(mapf(value, fromLower, fromUpper, toLower, toUpper), deadzone);
+// Maps the first range to the second range, with an added deadzone from -deadzone to +deadzone.
+float normalize_plus_deadzone(float value, float from_lower, float from_upper, float to_lower, float to_upper, float deadzone){
+  return remap_deadzone(mapf(value, from_lower, from_upper, to_lower, to_upper), deadzone);
 }
 
 void update_input_values(){
@@ -80,57 +80,53 @@ void update_input_values(){
   int rawJoyY = analogRead(PIN_JOY_Y);
   int rawAccl = analogRead(PIN_ACCEL);
 
-  joyX = normalizePlusDeadzone(rawJoyX, 0, 1023, -1, 1, 0.1f);
-  joyY = normalizePlusDeadzone(rawJoyY, 0, 1023, -1, 1, 0.1f);
-  accl = normalizePlusDeadzone(rawAccl, 0, 1023, 0, 1, 0.1f);
-  btnTurbo = digitalRead(PIN_TURBO) == LOW;
+  joyX = normalize_plus_deadzone(rawJoyX, 0, 1023, -1, 1, 0.1f);
+  joyY = normalize_plus_deadzone(rawJoyY, 0, 1023, -1, 1, 0.1f);
+  accl = normalize_plus_deadzone(rawAccl, 0, 1023, 0, 1, 0.1f);
+  turbo_btn_state = digitalRead(PIN_TURBO) == LOW;
 }
 
-void update_etat_turbo(){
-  switch(etatTurbo){
+// Updates the turbo state. Depends on the current state, how long the turbo has been in the state, and if the turbo butotn is being pressed.
+void update_turbo_state(){
+  switch(turbo_state){
     case idle:
-      if(btnTurbo){
-        etatTurbo = actif;
-        debutTurbo = millis();
+      if(turbo_btn_state){
+        turbo_state = active;
+        turbo_active_start = millis();
       }
       break;
 
-    case actif:
-      if(millis() - debutTurbo > DUREE_TURBO){
-        etatTurbo = recharge;
-        debutRecharge = millis();
+    case active:
+      if(millis() - turbo_active_start > TURBO_ACTIVE_TIME){
+        turbo_state = recharging;
+        turbo_recharge_start = millis();
       }
       break;
     
-    case recharge:
-      if(millis() - debutRecharge > DUREE_RECHARGE){
-        etatTurbo = idle;
+    case recharging:
+      if(millis() - turbo_recharge_start > TURBO_RECHARGE_TIME){
+        turbo_state = idle;
       }
   }
 }
 
 void send_motor_and_turbo_values(){
-  float gauche = constrain( joyX + joyY, -1, 1) * accl;
-  float droite = constrain(-joyX + joyY, -1, 1) * accl;
+  float left = constrain( joyX + joyY, -1, 1) * accl;
+  float right = constrain(-joyX + joyY, -1, 1) * accl;
 
-  // Pour la telecommande on pourrait envoyer les données pures avec Serial.write()
-  // Pour faire simple on peut faire avec 9 octets 4+4 pour les deux floats du moteurs + 1 pour le turbo.
-  // Serial.println(String(gauche) + ", " + droite + ", " + etatTurbo);
-
-  // Créer une union entre les donnés "utiles" et un tableau d'octets de meme longueur, permettant de réinterpréter les données en octets.
+  // Create a union of a struct containing the data we want to send, and an array of the same length, allowing the data to be reinterpreted directly as bytes.
   union {
     struct {
-      float gauche;
-      float droite;
+      float left;
+      float right;
       bool turbo;
-    } donnees;
-    byte bytes[sizeof(donnees)];
+    } data;
+    byte bytes[sizeof(data)];
   } u;
   
-  u.donnees.gauche = gauche;
-  u.donnees.droite = droite;
-  u.donnees.turbo = (etatTurbo == actif);
+  u.data.left = left;
+  u.data.right = right;
+  u.data.turbo = (turbo_state == active);
 
-  // Serial.write(u.bytes, sizeof(u.bytes));
   radio.write(u.bytes, sizeof(u.bytes));
 }
