@@ -9,10 +9,10 @@ enum TurboState {
 };
 
 // Input pin definitions
-#define PIN_JOY_X A0
-#define PIN_JOY_Y A1
-#define PIN_ACCEL A2
-#define PIN_TURBO 4 
+#define PIN_JOY_X A3
+#define PIN_JOY_Y A2
+#define PIN_ACCEL A4
+#define PIN_TURBO 4
 
 // nRF24L01 pins
 #define NRF_CE  7
