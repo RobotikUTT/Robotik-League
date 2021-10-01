@@ -8,6 +8,13 @@ enum TurboState {
   recharging
 };
 
+// A struct containing all the data we want to send to the robot.
+typedef struct {
+  float left;
+  float right;
+  bool turbo;
+} RCData;
+
 // Input pin definitions
 #define PIN_JOY_X A3
 #define PIN_JOY_Y A2
@@ -15,8 +22,8 @@ enum TurboState {
 #define PIN_TURBO 4
 
 // nRF24L01 pins
-#define NRF_CE  7
-#define NRF_CSN 8
+#define NRF_CE  A0
+#define NRF_CSN 10
 
 // Fixed values
 #define DEADZONE 0.1f
@@ -71,7 +78,7 @@ float remap_deadzone(float value, float deadzone){
 }
 
 // Maps the first range to the second range, with an added deadzone from -deadzone to +deadzone.
-float normalize_plus_deadzone(float value, float from_lower, float from_upper, float to_lower, float to_upper, float deadzone){
+float remap_with_deadzone(float value, float from_lower, float from_upper, float to_lower, float to_upper, float deadzone){
   return remap_deadzone(mapf(value, from_lower, from_upper, to_lower, to_upper), deadzone);
 }
 
@@ -80,9 +87,15 @@ void update_input_values(){
   int rawJoyY = analogRead(PIN_JOY_Y);
   int rawAccl = analogRead(PIN_ACCEL);
 
-  joyX = normalize_plus_deadzone(rawJoyX, 0, 1023, -1, 1, 0.1f);
-  joyY = normalize_plus_deadzone(rawJoyY, 0, 1023, -1, 1, 0.1f);
-  accl = normalize_plus_deadzone(rawAccl, 0, 1023, 0, 1, 0.1f);
+
+  float joyX_unnormalized = remap_with_deadzone(rawJoyX, 1023, 0, -1, 1, 0.1f);
+  float joyY_unnormalized = remap_with_deadzone(rawJoyY, 0, 1023, -1, 1, 0.1f);
+
+  float joy_modulus = sqrtf(joyX_unnormalized * joyX_unnormalized + joyY_unnormalized * joyY_unnormalized);
+
+  joyX = joyX_unnormalized / joy_modulus;
+  joyY = joyY_unnormalized / joy_modulus;
+  accl = remap_with_deadzone(rawAccl, 1023, 0, 0, 1, 0.1f);
   turbo_btn_state = digitalRead(PIN_TURBO) == LOW;
 }
 
@@ -112,22 +125,24 @@ void update_turbo_state(){
 }
 
 void send_motor_and_turbo_values(){
+  RCData rc_data;
+
   float left = constrain( joyX + joyY, -1, 1) * accl;
   float right = constrain(-joyX + joyY, -1, 1) * accl;
+  
+  rc_data.left = left;
+  rc_data.right = right;
+  rc_data.turbo = (turbo_state == active);
 
-  // Create a union of a struct containing the data we want to send, and an array of the same length, allowing the data to be reinterpreted directly as bytes.
+
+  // Create a union between the data we want to send and an array of bytes of the same length.
   union {
-    struct {
-      float left;
-      float right;
-      bool turbo;
-    } data;
+    RCData data;
     byte bytes[sizeof(data)];
   } u;
-  
-  u.data.left = left;
-  u.data.right = right;
-  u.data.turbo = (turbo_state == active);
 
+  u.data = rc_data;
+  
   radio.write(u.bytes, sizeof(u.bytes));
+  delay(10);
 }
