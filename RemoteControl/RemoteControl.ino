@@ -63,6 +63,7 @@ void loop(){
   update_input_values();
   update_turbo_state();
   send_motor_and_turbo_values();
+  delay(50);
 }
 
 // A version of "map()" for floats.
@@ -144,5 +145,4 @@ void send_motor_and_turbo_values(){
   u.data = rc_data;
   
   radio.write(u.bytes, sizeof(u.bytes));
-  delay(10);
 }
