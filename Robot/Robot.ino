@@ -14,6 +14,8 @@
 #define NRF_CE  8
 #define NRF_CSN 10
 
+#define BAT_VOLT_PIN A6
+
 // A struct containing all the data we want to send to the robot.
 typedef struct {
   float left;
@@ -28,6 +30,8 @@ RCData rc_data;
 const byte address[6] = "test1";
 
 byte buffer[32];
+
+float bat_volt;
 
 void setup() {
   Serial.begin(9600);
@@ -49,14 +53,16 @@ void setup() {
 }
 
 void loop() {
+  read_battery_voltage();
   update_rc_data();
   update_motor_outputs();
+  delay(10);
 }
 
 void update_rc_data(){
   union {
     RCData data;
-    byte bytes[sizeof(data)];
+    byte bytes[32];
   } u;
 
   if (radio.available()) {
@@ -66,17 +72,33 @@ void update_rc_data(){
   }
 }
 
+// A version of "map()" for floats.
+float mapf(float x, float in_min, float in_max, float out_min, float out_max){
+  return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+}
+
 void update_motor_outputs(){
+
+  float output_coef = 6/bat_volt;
+  if(output_coef > 1) output_coef = 1.0f;
+
+
   digitalWrite(LEFT_BACKWARD_PIN, rc_data.left < 0);
   digitalWrite(LEFT_FORWARD_PIN, rc_data.left > 0);
 
   digitalWrite(RIGHT_BACKWARD_PIN, rc_data.right < 0);
   digitalWrite(RIGHT_FORWARD_PIN, rc_data.right > 0);
 
-  analogWrite(RIGHT_PWM_PIN, abs(rc_data.right * 255));
-  analogWrite(LEFT_PWM_PIN, abs(rc_data.left * 255));
+  analogWrite(RIGHT_PWM_PIN, abs(rc_data.right * 255 * output_coef));
+  analogWrite(LEFT_PWM_PIN, abs(rc_data.left * 255 * output_coef));
+
+  Serial.print("left: ");
+  Serial.print(rc_data.left);
+  Serial.print("; right: ");
+  Serial.println(rc_data.right);
 }
 
 void read_battery_voltage(){
-
+  int bat_pin_in = analogRead(BAT_VOLT_PIN);
+  bat_volt = mapf(bat_pin_in, 0.0f, 1023.0f, 0.0f, 15.0f);
 }
