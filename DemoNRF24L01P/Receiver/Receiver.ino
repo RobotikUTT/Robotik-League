@@ -7,6 +7,7 @@
 #define CSN_PIN		9
 #define VBAT_PIN	A7
 #define LED_GREEN_PIN	2
+#define TEST_PWM_PIN	5
 
 #define LED_BLINK_HALF_PERIOD_MS	350
 #define CONNECTION_TIMEOUT_MS		200
@@ -39,6 +40,9 @@ volatile bool left_dir_forward = true;	// true = forward; false = reverse
 volatile bool turbo_ON = false;
 uint32_t turbo_start_ms;
 
+volatile uint8_t current_pwm_right = 0;
+volatile uint8_t current_pwm_left = 0;
+
 volatile bool battery_low = false;
 float battery_low_threshold = 6.4;	// Battery cell is too low at 3.2V; 2S (2 cells) battery -> 6.4V
 
@@ -63,6 +67,7 @@ void setup() {
 	}
 
 	pinMode(LED_GREEN_PIN, OUTPUT);
+	pinMode(TEST_PWM_PIN, OUTPUT);
 
 	// Configure interrupt
 	pinMode(IRQ_PIN, INPUT);
@@ -151,6 +156,14 @@ uint8_t calc_pwm(uint8_t pwm_in) {
 
 void update_motors(uint8_t right_pwm, uint8_t left_pwm) {
 	// Apply pwm and direction on both L293D
+	if (right_pwm != current_pwm_right) {
+		current_pwm_right = right_pwm;
+		analogWrite(TEST_PWM_PIN, right_pwm);
+	}
+	if (left_pwm != current_pwm_left) {
+		current_pwm_left = left_pwm;
+		// analogWrite(TEST_PWM_PIN, left_pwm);
+	}
 
 	return;
 }
