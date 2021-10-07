@@ -6,11 +6,14 @@
 #define CE_PIN		A0
 #define CSN_PIN		10
 
-#define LED_GREEN_PIN	A5
+#define LED_CONNECTION_PIN	3
+#define LED_TURBO_PIN 0
+#define LED_POWER_PIN A5
 
 #define RADIO_UPDATE_FREQUENCY_HZ	100
 #define RADIO_UPDATE_PERIOD_US		1000000 / RADIO_UPDATE_FREQUENCY_HZ
 #define LED_BLINK_HALF_PERIOD_MS	350
+#define TURBO_LED_BLINK_HALF_PERIOD_MS 100
 
 #define TURBO_ACTIVE_DURATION_MS   3000
 #define TURBO_RECHARGE_DURATION_MS 3000
@@ -74,7 +77,11 @@ void setup() {
 		while (1) {} // Hold in infinite loop; Maybe put a red led blinking
 	}
   
-	pinMode(LED_GREEN_PIN, OUTPUT);
+	pinMode(LED_CONNECTION_PIN, OUTPUT);
+	pinMode(LED_TURBO_PIN, OUTPUT);
+	pinMode(LED_POWER_PIN, OUTPUT);
+
+	digitalWrite(LED_POWER_PIN, HIGH);
 
   // Initialize the DIP switch pins
   pinMode(DIP_PIN_1, INPUT_PULLUP);
@@ -136,7 +143,7 @@ void loop() {
 	// }
 	/* END SERIAL DEBUG */
 
-  /* START READ JOYSTICKS */
+  /* START READ JOYSTICKS */	
   int rawJoyX = analogRead(JOY_X_PIN);
   int rawJoyY = analogRead(JOY_Y_PIN);
   int rawAccl = analogRead(ACCEL_PIN);
@@ -159,25 +166,33 @@ void loop() {
 	// 2) Blink the connection status LED (green) if not connected
 	if (!connected && millis() - last_led_blink_ms > LED_BLINK_HALF_PERIOD_MS) {
 		last_led_blink_ms = millis();
-		digitalWrite(LED_GREEN_PIN, led_state ^= 1);
+		digitalWrite(LED_CONNECTION_PIN, led_state ^= 1);
 	}
+
+	if(connected) digitalWrite(LED_CONNECTION_PIN, HIGH); // Not efficient
 
 	// 3) Determine if the turbo should be active, recharging or disabled
 	switch (turbo_state)
 	{
 	case disabled:
+		digitalWrite(LED_TURBO_PIN, HIGH);
+
+
 		if(turbo_btn_state){
 			turbo_state = active;
 			turbo_active_start_ms = millis();
 		}
 		break;
 	case active:
+		digitalWrite(LED_TURBO_PIN, (millis() - turbo_recharge_start_ms) % (2*TURBO_LED_BLINK_HALF_PERIOD_MS) > TURBO_LED_BLINK_HALF_PERIOD_MS);
+
 		if(millis() - turbo_active_start_ms > TURBO_ACTIVE_DURATION_MS){
 			turbo_state = recharging;
 			turbo_recharge_start_ms = millis(); // We could also do turbo_active_start_ms + TURBO_ACTIVE_DURATION
 		}
 		break;
 	case recharging:
+		digitalWrite(LED_TURBO_PIN, LOW);
 		if(millis() - turbo_recharge_start_ms > TURBO_RECHARGE_DURATION_MS){
 			turbo_state = disabled;
 		}
@@ -202,11 +217,7 @@ void loop() {
 		spd_data.right_speed = abs(right_speed) * 255;
 		spd_data.left_speed = abs(left_speed) * 255;
 
-		radio.write(&spd_data, sizeof(packet_t));
-		Serial.print("left: ");
-		Serial.print(left_speed);
-		Serial.print("; right: ");
-		Serial.println(right_speed);
+		connected = radio.write(&spd_data, sizeof(packet_t));
 	}
 }
 
@@ -226,7 +237,7 @@ uint8_t get_dip_switches_selection() {
 
 // 	if (tx_ds) {
 // 		connected = true;
-// 		// digitalWrite(LED_GREEN_PIN, HIGH);
+// 		// digitalWrite(LED_CONNECTION_PIN, HIGH);
 // 	}
 // 	if (tx_df)
 // 		connected = false;
